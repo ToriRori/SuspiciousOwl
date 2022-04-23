@@ -1,3 +1,6 @@
+import {faceapi} from './faceapi2.js'
+import './tf.js'
+
 let flag = 0
 const maxDist = 0.6
 var canvasFace
@@ -5,7 +8,8 @@ var webcamFace
 var dist = 1
 
 const canvas = document.getElementById("output1")
-const webcam = document.getElementById("webcam")
+const webcam = document.createElement("video")
+webcam.autoplay = true
 const photoBtn = document.getElementById("photoBtn")
 const distResult = document.getElementById("distResult")
 const onTabStatus = document.getElementById("1")
@@ -22,7 +26,9 @@ var canVideo = document.getElementById("canV");
 var ctx = canVideo.getContext('2d')
 
 var x1 = 0,
+    x2 = 0,
     y1 = 0,
+    y2 = 0,
     width = 0,
     height = 0
 var image, camera, model, input
@@ -58,9 +64,7 @@ function getAngle(pos) {
     if (eye_nose_dist > mouse_nose_dist) {
         nose_mouse_dist *= -1
     }
-    //let nose_mouse_difference = eye_mouse_dist - nose_mouse_dist;
-    //let nose_mouse = Math.min(nose_mouse_difference, nose_mouse_dist);
-    //let nose_difference = mid_eye_mouse_dist - nose_mouse;
+
     let angle_yaxis = (nose_mouse_dist / mid_eye_mouse_dist) * 90;
 
     let lenght1 = Math.sqrt((x_left - x_nose) ** 2 + (y_left - y_nose) ** 2);
@@ -79,25 +83,6 @@ function getAngle(pos) {
     }
 
     let angle_xaxis = mid_nose_dist / length2 / 2 * 90;
-    //let k = (y_right - y_left) / (x_right - x_left);
-    //let b = (y_right - k * x_right);
-    // let dist_y = Math.abs(k * x_nose - y_nose + b) / Math.sqrt(k ** 2 + 1);
-    // if (dist_y <= lenght1) {
-    //     angle1 = Math.asin(dist_y / lenght1) * 180 / Math.PI
-    // } else {
-    //     angle1 = Math.asin(1) * 180 / Math.PI;
-    // }
-    // if (dist_y <= lenght3) {
-    //     angle2 = Math.asin(dist_y / lenght3) * 180 / Math.PI
-    // } else {
-    //     angle2 = Math.asin(1) * 180 / Math.PI
-    // }
-    // let dist_a = Math.atan(angle1 * Math.PI / 180) * dist_y
-    // let dist_b = length2 - dist_a
-    //return [angle_yaxis, Math.max(dist_a, dist_b)]
-    
-
-
     return [angle_yaxis, angle_xaxis]
 }
 
@@ -150,10 +135,14 @@ async function setStatus(id) {
 }
 
 
-async function getDistance() {
+async function getDistance(actualFace, expectedFace, threshold=0.4) { // args: canvases
     if (!flag) return
     webcamFace = await faceapi.
-    detectAllFaces(webcam, new faceapi.TinyFaceDetectorOptions())
+    detectAllFaces(actualFace, new faceapi.TinyFaceDetectorOptions())
+        .withFaceLandmarks(true)
+        .withFaceDescriptors()
+    canvasFace = await faceapi
+        .detectAllFaces(expectedFace, new faceapi.TinyFaceDetectorOptions())
         .withFaceLandmarks(true)
         .withFaceDescriptors()
     if (canvasFace.length > 1) {
@@ -165,7 +154,7 @@ async function getDistance() {
         headStatus.innerHTML = angle.map(a => a.toFixed(3));
         dist = await faceapi.euclideanDistance(webcamFace[0].descriptor, canvasFace[0].descriptor)
         distResult.innerHTML = (1 - dist).toFixed(3)
-        if (dist < maxDist) {
+        if (dist < 1 - threshold) {
             setStatus(0)
         } else {
             setStatus(1)
@@ -176,8 +165,8 @@ async function getDistance() {
 
 }
 
-async function findSmarphone() {
-    image = tf.browser.fromPixels(canVideo)
+async function findSmarphone(inputCanvas, threshold=0.7) {
+    image = tf.browser.fromPixels(inputCanvas)
     input = tf.tidy(() => {
         return tf.image
             .resizeBilinear(image, [640, 640])
@@ -205,7 +194,7 @@ async function findSmarphone() {
             width = x2 - x1;
             height = y2 - y1;
             const score = scores_data[i].toFixed(3);
-            if (score >= 0.7) {
+            if (score >= threshold) {
                 phoneStatus.innerHTML = "Found ( " + score + " )"
             } else {
                 smartphoneNotFound()
@@ -215,14 +204,16 @@ async function findSmarphone() {
     })
 }
 
-async function getStats() {
-    await getDistance()
-    await findSmarphone()
+async function getStats(actualCanvas, expectedCanvas) {
+    await getDistance(actualCanvas, expectedCanvas)
+    await findSmarphone(actualCanvas)
 }
 
 function smartphoneNotFound() {
     x1 = 0
+    x2 = 0
     y1 = 0
+    y2 = 0
     width = 0
     height = 0
 }
@@ -241,7 +232,7 @@ window.addEventListener('load', async function() {
     await loadModels()
     await runVideo()
     setTimeout(drawImge, 300)
-    setInterval(getStats, 1000)
+    setInterval(getStats, 1000, webcam, canvas)
 })
 
 
