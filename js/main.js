@@ -136,36 +136,47 @@ async function setStatus(id) {
 
 
 async function getDistance(actualFace, expectedFace, threshold=0.4) { // args: canvases
-    if (!flag) return
-    webcamFace = await faceapi.
-    detectAllFaces(actualFace, new faceapi.TinyFaceDetectorOptions())
+    var result = {
+        people_num: 0,
+        same_person: false,
+        similarity_value: 0,
+        x_angle: 0,
+        y_angle: 0,
+    }
+    webcamFace = await faceapi
+        .detectAllFaces(actualFace, new faceapi.TinyFaceDetectorOptions())
         .withFaceLandmarks(true)
         .withFaceDescriptors()
     canvasFace = await faceapi
         .detectAllFaces(expectedFace, new faceapi.TinyFaceDetectorOptions())
         .withFaceLandmarks(true)
         .withFaceDescriptors()
-    if (canvasFace.length > 1) {
-        setStatus(3)
-    } else if (webcamFace.length > 1) {
+
+    result.people_num = webcamFace.length
+    if (webcamFace.length > 1) {
         setStatus(2)
     } else if (webcamFace[0] && canvasFace[0]) {
         var angle = getAngle(webcamFace[0].landmarks.positions)
         headStatus.innerHTML = angle.map(a => a.toFixed(3));
+        result.y_angle = angle[0]
+        result.x_angle = angle[1]
         dist = await faceapi.euclideanDistance(webcamFace[0].descriptor, canvasFace[0].descriptor)
         distResult.innerHTML = (1 - dist).toFixed(3)
+        result.similarity_value = 1 - dist
         if (dist < 1 - threshold) {
             setStatus(0)
+            result.same_person = true
         } else {
             setStatus(1)
         }
     } else {
         setStatus(-1)
     }
-
+    return result
 }
 
 async function findSmarphone(inputCanvas, threshold=0.7) {
+    var result = 0;
     image = tf.browser.fromPixels(inputCanvas)
     input = tf.tidy(() => {
         return tf.image
@@ -180,6 +191,8 @@ async function findSmarphone(inputCanvas, threshold=0.7) {
         const classes_data = classes.dataSync()
         const valid_detections_data = valid_detections.dataSync()[0]
         tf.dispose(res)
+
+        result = valid_detections_data.length
 
         if (!valid_detections_data) {
             smartphoneNotFound()
@@ -201,12 +214,17 @@ async function findSmarphone(inputCanvas, threshold=0.7) {
                 phoneStatus.innerHTML = "Not Found"
             }
         }
+
+        return result
     })
 }
 
 async function getStats(actualCanvas, expectedCanvas) {
-    await getDistance(actualCanvas, expectedCanvas)
-    await findSmarphone(actualCanvas)
+    var smartphones = await findSmarphone(actualCanvas)
+    var result = await getDistance(actualCanvas, expectedCanvas)
+    result['phones_num'] = smartphones
+    console.log(result)
+    return result
 }
 
 function smartphoneNotFound() {
