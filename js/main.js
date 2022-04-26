@@ -3,18 +3,12 @@ import './tf.js'
 
 var canvasFace
 var webcamFace
-var dist = 1
+var isFullWindow = true
+var isActiveStatus = true
+var onTabStatus = true
 
-const canvas = document.getElementById("output1")
 const webcam = document.createElement("video")
 webcam.autoplay = true
-const distResult = document.getElementById("distResult")
-const onTabStatus = document.getElementById("1")
-const isActiveStatus = document.getElementById("2")
-const isFullwindow = document.getElementById("3")
-const curStatus = document.getElementById("curStatus")
-const phoneStatus = document.getElementById("phoneStatus")
-const headStatus = document.getElementById("headStatus")
 
 const model_url = 'models'
 const tfPath = "models/best_web_model/model.json"
@@ -25,7 +19,7 @@ var x1 = 0,
     y2 = 0,
     width = 0,
     height = 0
-var image, camera, model, input
+var image, model, input
 
 
 function getAngle(pos) {
@@ -50,7 +44,6 @@ function getAngle(pos) {
     let x_eye_mouse_mid = (x_mid_eye + x_mid_mouse) / 2;
     let y_eye_mouse_mid = (y_mid_eye + y_mid_mouse) / 2;
     let mid_eye_mouse_dist = Math.sqrt((x_mid_mouse - x_eye_mouse_mid) ** 2 + (y_mid_mouse - y_eye_mouse_mid) ** 2);
-    let eye_mouse_dist = Math.sqrt((x_mid_eye - x_mid_mouse) ** 2 + (y_mid_eye - y_mid_mouse) ** 2);
     let eye_nose_dist = Math.sqrt((x_mid_eye - x_nose) ** 2 + (y_mid_eye - y_nose) ** 2);
     let mouse_nose_dist = Math.sqrt((x_mid_mouse - x_nose) ** 2 + (y_mid_mouse - y_nose) ** 2);
     
@@ -61,9 +54,7 @@ function getAngle(pos) {
 
     let angle_yaxis = (nose_mouse_dist / mid_eye_mouse_dist) * 90;
 
-    let lenght1 = Math.sqrt((x_left - x_nose) ** 2 + (y_left - y_nose) ** 2);
     let length2 = Math.sqrt((x_left - x_right) ** 2 + (y_left - y_right) ** 2);
-    let lenght3 = Math.sqrt((x_right - x_nose) ** 2 + (y_right - y_nose) ** 2);
 
     let x_left_right_mid = (x_right + x_left) / 2;
     let y_left_right_mid = (y_right + y_left) / 2;
@@ -88,54 +79,22 @@ async function loadModels() {
     console.log("Models are loaded")
 }
 
-async function updateCanvasResolution(settings) {
-    canvas.width = settings.width
-    canvas.height = settings.height
-}
-
 async function runVideo() {
     const constraints = {
         video: 1
     }
-    let stream = await navigator.mediaDevices.getUserMedia(constraints)
-    let stream_settings = stream.getVideoTracks()[0].getSettings()
-    webcam.srcObject = stream
-    updateCanvasResolution(stream_settings)
+    webcam.srcObject = await navigator.mediaDevices.getUserMedia(constraints)
 }
 
-async function setStatus(id) {
-    switch (id) {
-        case -1:
-            curStatus.style.backgroundColor = "red"
-            curStatus.innerHTML = "Face not Found"
-            break
-        case 0:
-            curStatus.style.backgroundColor = "green"
-            curStatus.innerHTML = "OK"
-            break
-        case 1:
-            curStatus.style.backgroundColor = "red"
-            curStatus.innerHTML = "Another person"
-            break
-        case 2:
-            curStatus.style.backgroundColor = "red"
-            curStatus.innerHTML = "several people in the video"
-            break
-        case 3:
-            curStatus.style.backgroundColor = "red"
-            curStatus.innerHTML = "Several people in the photo"
-            break
-    }
-}
-
-
-async function getDistance(actualFace, expectedFace, threshold=0.4) { // args: canvases
+async function getDistance(actualFace, expectedFace, similarityThreshold=0.4, xAngleThreshold=30, yAngleThreshold=10) { // args: canvases
     var result = {
         people_num: 0,
         same_person: false,
         similarity_value: 0,
         x_angle: 0,
         y_angle: 0,
+        x_angle_broken: false,
+        y_angle_broken: false
     }
     webcamFace = await faceapi
         .detectAllFaces(actualFace, new faceapi.TinyFaceDetectorOptions())
@@ -147,29 +106,25 @@ async function getDistance(actualFace, expectedFace, threshold=0.4) { // args: c
         .withFaceDescriptors()
 
     result.people_num = webcamFace.length
-    if (webcamFace.length > 1) {
-        setStatus(2)
-    } else if (webcamFace[0] && canvasFace[0]) {
+    if (webcamFace[0] && canvasFace[0]) {
         var angle = getAngle(webcamFace[0].landmarks.positions)
-        headStatus.innerHTML = angle.map(a => a.toFixed(3));
         result.y_angle = angle[0]
         result.x_angle = angle[1]
-        dist = await faceapi.euclideanDistance(webcamFace[0].descriptor, canvasFace[0].descriptor)
-        distResult.innerHTML = (1 - dist).toFixed(3)
+        if (Math.abs(angle[0]) > yAngleThreshold)
+            result.y_angle_broken = true
+        if (Math.abs(angle[1]) > xAngleThreshold)
+            result.x_angle_broken = true
+        var dist = await faceapi.euclideanDistance(webcamFace[0].descriptor, canvasFace[0].descriptor)
         result.similarity_value = 1 - dist
-        if (dist < 1 - threshold) {
-            setStatus(0)
+        if (dist < 1 - similarityThreshold) {
             result.same_person = true
-        } else {
-            setStatus(1)
         }
-    } else {
-        setStatus(-1)
     }
+
     return result
 }
 
-async function findSmarphone(inputCanvas, threshold=0.7) {
+async function findSmartphone(inputCanvas, threshold=0.7) {
     var result = 0;
     image = tf.browser.fromPixels(inputCanvas)
     input = tf.tidy(() => {
@@ -182,15 +137,8 @@ async function findSmarphone(inputCanvas, threshold=0.7) {
         const [boxes, scores, classes, valid_detections] = res
         const boxes_data = boxes.dataSync()
         const scores_data = scores.dataSync()
-        const classes_data = classes.dataSync()
         const valid_detections_data = valid_detections.dataSync()[0]
         tf.dispose(res)
-
-        result = valid_detections_data.length
-
-        if (!valid_detections_data) {
-            smartphoneNotFound()
-        }
 
         for (var i = 0; i < valid_detections_data; ++i) {
             [x1, y1, x2, y2] = boxes_data.slice(i * 4, (i + 1) * 4);
@@ -202,10 +150,7 @@ async function findSmarphone(inputCanvas, threshold=0.7) {
             height = y2 - y1;
             const score = scores_data[i].toFixed(3);
             if (score >= threshold) {
-                phoneStatus.innerHTML = "Found ( " + score + " )"
-            } else {
-                smartphoneNotFound()
-                phoneStatus.innerHTML = "Not Found"
+                result += 1
             }
         }
 
@@ -213,63 +158,41 @@ async function findSmarphone(inputCanvas, threshold=0.7) {
     })
 }
 
-async function getStats(actualCanvas, expectedCanvas) {
-    var smartphones = await findSmarphone(actualCanvas)
+export async function getStats(expectedCanvas, actualCanvas=webcam) {
+    var smartphones = await findSmartphone(actualCanvas)
     var result = await getDistance(actualCanvas, expectedCanvas)
     result['phones_num'] = smartphones
+    result['is_full_window'] = isFullWindow
+    result['is_active_status'] = isActiveStatus
+    result['on_tab_status'] = onTabStatus
     console.log(result)
     return result
 }
 
-function smartphoneNotFound() {
-    x1 = 0
-    x2 = 0
-    y1 = 0
-    y2 = 0
-    width = 0
-    height = 0
+export async function getStatsThread(expectedCanvas) {
+    await runVideo()
+    setInterval(getStats, 1000, expectedCanvas, webcam)
 }
 
-function drawImge() {
-    ctx.strokeStyle = "#00FFFF";
-    ctx.lineWidth = 4;
-    ctx.drawImage(webcam, 0, 0, 640, 480)
-    ctx.strokeRect(x1, y1, width, height);
-    setTimeout(drawImge, 100);
-}
-
-// Event Handlers
 window.addEventListener('load', async function() {
     model = await tf.loadGraphModel(tfPath)
     await loadModels()
-    await runVideo()
-    setTimeout(drawImge, 300)
-    setInterval(getStats, 1000, webcam, canvas)
 })
 
-
 window.addEventListener('focus', function() {
-    isActiveStatus.innerHTML = "1"
+    isActiveStatus = true
 })
 
 window.addEventListener('blur', function() {
-    isActiveStatus.innerHTML = "0"
+    isActiveStatus = false
 })
 
 function checkOnTab() {
-    if (!document.hidden) {
-        onTabStatus.innerHTML = "1"
-    } else {
-        onTabStatus.innerHTML = "0"
-    }
+    onTabStatus = !document.hidden
 }
 
 function checkFullwindow() {
-    if ((screen.width == window.innerWidth) && (window.screenX == 0) && (window.screenY == 0)) {
-        isFullwindow.innerHTML = "1"
-    } else {
-        isFullwindow.innerHTML = "0"
-    }
+    isFullWindow = (screen.width == window.innerWidth) && (window.screenX == 0) && (window.screenY == 0)
 }
 
 document.addEventListener('visibilitychange', checkOnTab)
