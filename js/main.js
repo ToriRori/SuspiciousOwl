@@ -1,8 +1,6 @@
 import {faceapi} from './faceapi2.js'
 import './tf.js'
 
-let flag = 0
-const maxDist = 0.6
 var canvasFace
 var webcamFace
 var dist = 1
@@ -10,7 +8,6 @@ var dist = 1
 const canvas = document.getElementById("output1")
 const webcam = document.createElement("video")
 webcam.autoplay = true
-const photoBtn = document.getElementById("photoBtn")
 const distResult = document.getElementById("distResult")
 const onTabStatus = document.getElementById("1")
 const isActiveStatus = document.getElementById("2")
@@ -21,9 +18,6 @@ const headStatus = document.getElementById("headStatus")
 
 const model_url = 'models'
 const tfPath = "models/best_web_model/model.json"
-
-var canVideo = document.getElementById("canV");
-var ctx = canVideo.getContext('2d')
 
 var x1 = 0,
     x2 = 0,
@@ -280,12 +274,3 @@ function checkFullwindow() {
 
 document.addEventListener('visibilitychange', checkOnTab)
 window.addEventListener('resize', checkFullwindow)
-
-photoBtn.addEventListener('click', async function() {
-    canvas.getContext('2d').drawImage(webcam, 0, 0, canvas.width, canvas.height)
-    flag = 1
-    canvasFace = await faceapi
-        .detectAllFaces(canvas, new faceapi.TinyFaceDetectorOptions())
-        .withFaceLandmarks(true)
-        .withFaceDescriptors()
-})
