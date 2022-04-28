@@ -1,5 +1,4 @@
-import "./main.js"
-import {getStatsThread} from "./main.js";
+import * as so from "./main.js"
 
 const imageFile = document.getElementById("imageFile")
 const startBtn = document.getElementById("startBtn")
@@ -31,9 +30,8 @@ function isCanvasBlank(canvas) {
 
 startBtn.addEventListener('click', async function() {
     if (isCanvasBlank(canvasImage)) {
-
+        so.addChecker(console.log)
     } else {
-        console.log('hello')
-        getStatsThread(canvasImage);
+        so.addChecker(console.log, canvasImage)
     }
 })
